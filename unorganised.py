@@ -10,7 +10,7 @@ from langchain_anthropic import ChatAnthropic
 from sentence_transformers import SentenceTransformer, util
 from langchain.chains.question_answering import load_qa_chain
 
-anthropic_secret_key='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'
+anthropic_secret_key=''
 
 # sidebar
 with st.sidebar:
