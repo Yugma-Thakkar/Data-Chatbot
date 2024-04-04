@@ -1,4 +1,5 @@
 import os
+import openai
 import streamlit as st
 import pickle
 from streamlit_extras.add_vertical_space import add_vertical_space
@@ -6,23 +7,19 @@ from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.embeddings import OpenAIEmbeddings, HuggingFaceEmbeddings
-from langchain_anthropic import ChatAnthropic
-from sentence_transformers import SentenceTransformer, util
+from langchain.chat_models import ChatOpenAI, ChatAnthropic
 from langchain.chains.question_answering import load_qa_chain
-
-anthropic_secret_key=''
 
 # sidebar
 with st.sidebar:
-    st.write("PDF Chatbot")
     st.markdown('''
+    # PDF Chatbot
     ## Instructions
-    1. Upload a PDF file
-    2. Ask a question
-    3. Get the answer
-    4. Repeat
+    1. Upload your OpenAI API key
+    2. Upload your PDF file
+    3. Ask your question
+    4. Get the answer
     5. Enjoy!
-                
     ''')
 
     add_vertical_space(5)
@@ -35,74 +32,94 @@ def extract_text(pdf):
         text += page.extract_text()
     return text
 
-# def get_embedding(chunk):
-#     # model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-    # model = SentenceTransformer('sentence-transformers/sentence-t5-base')
-#     embeddings = model.encode(chunk, convert_to_tensor=True)
-#     return embeddings
+# later on, figure out how to test the OpenAI API key without having to run every time
+# test.txt -> <API_KEY> = True | False
+def api_key_test(api_key):
+    # try:
+    #     response = openai.ChatCompletion.create(
+    #         model="gpt-3.5-turbo",
+    #         messages=[
+    #             {"role": "system", "content": "This is just a test."},
+    #             {"role": "user", "content": "Reply with 'True' if you can see this message."},
+    #         ],
+    #         max_tokens=5,
+    #         api_key=api_key,
+    #         temperature=0.0
+    #     )
+        
+    #     print(response.choices[0].message.content)
+    #     if response.choices[0].message.content == "True":
+    #         # create a file to store the response
+    #         with open("test.txt", "w") as f:
+    #             f.write(response.choices[0].message.content)
+    #         return True
 
-# def index(chunks, name):
-#     # embed chunks and save index as a pkl file
-#     embeddings = []
-#     i = 1
-#     for chunk in chunks:
-#         embedded_chunk = get_embedding(chunk)
-#         embeddings.append(embedded_chunk)
-#         print(f"\nEmbedding number: {i}\tshape: {embedded_chunk.shape}\n{embedded_chunk}\n\n")
-#         # st.write(f"\nEmbedding number: {i}\tshape: {embedded_chunk.shape}")
-#         i += 1
-#         dimension = embedded_chunk.shape
-
-#     indx = faiss.IndexIDMap(faiss.IndexFlatIP(dimension))
-#     indx.add_with_ids(embeddings, range(len(embeddings)))
-#     faiss.write_index(indx, f'{name}.pkl')
-
-#     return True
+    # except Exception as e:
+    #     return Exception
+    return True
 
 # main content
 def main():
     st.title("PDF Chatbot")
-    st.write("Upload a PDF file to get started!")
-    pdf = st.file_uploader("Choose a PDF file", type="pdf")
-    if pdf is not None:
-        st.write("PDF uploaded successfully!")
-        
-        text = extract_text(pdf)
+    # st.write("Upload a PDF file to get started!")
+    
+    openai_api_key = st.text_input("OpenAI API Key")
 
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len
-        )
+    if not openai_api_key:
+        st.write("Please upload your OpenAI API key to get started.")
+    elif openai_api_key:
+        # st.write("OpenAI API key uploaded successfully!")
+        # st.write(openai_api_key)
 
-        chunks = splitter.split_text(text=text)
-        # st.write(f"Number of chunks: {len(chunks)}\n\n")
+        test_return = api_key_test(openai_api_key)
 
-        store_name = pdf.name[:-4]
+        if test_return == True:
 
-        if os.path.exists(f"{store_name}.pkl"):
-            with open(f"{store_name}.pkl", "rb") as f:
-                vector_store = pickle.load(f)
-                # st.write("Index loaded successfully!")
+            pdf = st.file_uploader("Choose a PDF file", type="pdf")
+
+            if pdf is None:
+                st.write("Please upload a PDF file to get started.")
+            elif pdf is not None:
+                # st.write("PDF uploaded successfully!")
+                
+                text = extract_text(pdf)
+
+                splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=1000,
+                    chunk_overlap=200,
+                    length_function=len
+                )
+
+                chunks = splitter.split_text(text=text)
+                # st.write(f"Number of chunks: {len(chunks)}\n\n")
+
+                store_name = pdf.name[:-4]
+                # st.write(store_name)
+                if os.path.exists(f"{store_name}.pkl"):
+                    with open(f"{store_name}.pkl", "rb") as f:
+                        vector_store = pickle.load(f)
+                        # st.write("Index loaded successfully!")
+                else:
+                    model = 'sentence-transformers/sentence-t5-base'
+                    embeddings = HuggingFaceEmbeddings(model_name=model)
+                    vector_store = FAISS.from_texts(chunks, embedding=embeddings)
+                    with open(f"{store_name}.pkl", "wb") as f:
+                        pickle.dump(vector_store, f)
+
+                    # st.write("Embeddings indexed successfully!")
+
+                question = st.text_input("Ask a question:")
+
+                if question:
+                    docs = vector_store.similarity_search(query=question, k=3)
+
+                    chat = ChatOpenAI(api_key=openai_api_key, model="gpt-3.5-turbo", temperature=0)
+                    chain = load_qa_chain(llm=chat, chain_type="stuff")
+                    response = chain.run(input_documents=docs, question=question)
+                    st.write(response)
+                
         else:
-            model = 'sentence-transformers/sentence-t5-base'
-            embeddings = HuggingFaceEmbeddings(model_name=model)
-            vector_store = FAISS.from_texts(chunks, embedding=embeddings)
-            with open(f"{store_name}.pkl", "wb") as f:
-                pickle.dump(vector_store, f)
+            st.write("Invalid OpenAI API key. Please try again.")
 
-            st.write("Embeddings indexed successfully!")
-
-        question = st.text_input("Ask a question:")
-        
-        if question:
-            docs = vector_store.similarity_search(query=question, k=3)
-            # st.write(docs)
-
-            chat = ChatAnthropic(model_name = "claude-3-haiku-20240307", anthropic_api_key=anthropic_secret_key)
-            chain = load_qa_chain(llm=chat, chain_type="stuff")
-            response = chain.run(input_documents = docs, question=question)
-            st.write(response)
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
