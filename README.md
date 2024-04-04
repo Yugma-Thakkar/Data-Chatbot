@@ -1,5 +1,5 @@
 
-# PDF-Chat
+# 💬 PDF-Chat
 
 PDF Chat is a simple yet powerful tool that allows users to engage in conversations with their PDF documents. Seamlessly integrating the capabilities of OpenAI's language model, users can upload a PDF file and initiate a dialogue with the content within.
 
@@ -27,4 +27,4 @@ PDF Chat is a simple yet powerful tool that allows users to engage in conversati
 - Integration with Anthropic's Claude for expanded functionality and enhanced user experience.
 - Additional features and improvements based on user feedback and community contributions.
 
-# Start conversing with your PDF data today with PDF Chat!
+## Start conversing with your PDF data today with PDF Chat!
