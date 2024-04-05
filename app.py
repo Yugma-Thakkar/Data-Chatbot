@@ -119,6 +119,7 @@ def main():
                     with get_openai_callback() as cb:
                         response = chain.run(input_documents=docs, question=question)
                         print(cb)
+                        print(f"*"*100)
                         st.write(response)
                 
         else:
