@@ -9,6 +9,7 @@ from langchain.vectorstores import FAISS
 from langchain.embeddings import OpenAIEmbeddings, HuggingFaceEmbeddings
 from langchain.chat_models import ChatOpenAI, ChatAnthropic
 from langchain.chains.question_answering import load_qa_chain
+from langchain.callbacks import get_openai_callback
 
 # sidebar
 with st.sidebar:
@@ -113,10 +114,12 @@ def main():
                 if question:
                     docs = vector_store.similarity_search(query=question, k=3)
 
-                    chat = ChatOpenAI(api_key=openai_api_key, model="gpt-3.5-turbo", temperature=0)
+                    chat = ChatOpenAI(openai_api_key=openai_api_key, model="gpt-3.5-turbo", temperature=0)
                     chain = load_qa_chain(llm=chat, chain_type="stuff")
-                    response = chain.run(input_documents=docs, question=question)
-                    st.write(response)
+                    with get_openai_callback() as cb:
+                        response = chain.run(input_documents=docs, question=question)
+                        print(cb)
+                        st.write(response)
                 
         else:
             st.write("Invalid OpenAI API key. Please try again.")
