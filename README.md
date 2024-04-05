@@ -23,7 +23,7 @@ Make sure that you have Git installed on your device.
 - Run the command `streamlit run app.py` to launch the app.
 
 
-  ### How to use:
+### How to use:
 
 - **Upload API Key**: Start by providing your OpenAI API key for authentication.
 - **Upload PDF**: Select the PDF file you want to converse with.
