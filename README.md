@@ -12,7 +12,7 @@ PDF Chat is a simple yet powerful tool that allows users to engage in conversati
 - **Future Expansion**: Expect future updates, including additional options like integration with Anthropic's Claude.
 
 
-### Download and Launch
+### Download and Launch:
 
 Make sure that you have Git installed on your device.
 
@@ -32,7 +32,7 @@ Make sure that you have Git installed on your device.
 **Important Note**: Please ensure that you upload a valid OpenAI API key to enable seamless integration and accurate responses.
 
 
-### Contributing
+### Contributions:
 
 - Contributions are welcomed and encouraged. Feel free to submit pull requests or suggest enhancements to make PDF Chat even better!
 
