@@ -3,6 +3,16 @@
 
 PDF Chat is a simple yet powerful tool that allows users to engage in conversations with their PDF documents. Seamlessly integrating the capabilities of OpenAI's language model, users can upload a PDF file and initiate a dialogue with the content within.
 
+### Download and Launching
+
+Make sure that you have Git installed on your device.
+
+- To clone this repo onto your device, use the following command:
+  `git clone https://github.com/Yugma-Thakkar/PDF-Chat.git`
+- Install all the dependencies mentioned in `requirements.txt` by running the command:
+  `pip install -r requirements.txt.`
+- Run the command `streamlit run app.py` to launch the app.
+
 ### Features:
 
 - **Upload PDF**: Easily upload your PDF file to initiate conversations with your data.
