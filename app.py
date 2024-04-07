@@ -11,6 +11,10 @@ from langchain.chat_models import ChatOpenAI, ChatAnthropic
 from langchain.chains.question_answering import load_qa_chain
 from langchain.callbacks import get_openai_callback
 
+# EMBEDDINGS MODEL
+# model = 'sentence-transformers/sentence-t5-base' # okayish, not that good
+model = 'sentence-transformers/msmarco-distilbert-base-dot-prod-v3'
+
 # sidebar
 with st.sidebar:
     st.markdown('''
@@ -101,7 +105,6 @@ def main():
                         vector_store = pickle.load(f)
                         # st.write("Index loaded successfully!")
                 else:
-                    model = 'sentence-transformers/sentence-t5-base'
                     embeddings = HuggingFaceEmbeddings(model_name=model)
                     vector_store = FAISS.from_texts(chunks, embedding=embeddings)
                     with open(f"{store_name}.pkl", "wb") as f:
