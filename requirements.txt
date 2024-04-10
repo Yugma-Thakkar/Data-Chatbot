@@ -1,8 +1,10 @@
 openai
+anthropic
 langchain
-PyPDF2
-python-dotenv
-streamlit
-streamlit-extras
+langchain-community
+langchain-openai
 langchain-anthropic
+PyPDF2
+streamlit==1.29.0
+streamlit-extras
 pickle
