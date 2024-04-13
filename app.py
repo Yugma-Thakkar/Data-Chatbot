@@ -1,4 +1,5 @@
 import os
+# import langchain
 from openai import OpenAI
 import anthropic
 import streamlit as st
@@ -8,17 +9,21 @@ from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings.huggingface import HuggingFaceEmbeddings
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers.document_compressors import LLMChainExtractor
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain.chains.question_answering import load_qa_chain
 from langchain_community.callbacks import get_openai_callback
+
+# langchain.debug = True
 
 # EMBEDDING MODELS
 # embedding_model = 'sentence-transformers/sentence-t5-base' # okayish, not that good
 embedding_model = 'sentence-transformers/msmarco-distilbert-base-dot-prod-v3' # better than the above
 
 # number of chunks to return from the PDF
-ret_chunks = 10
+ret_chunks = 3
 
 with st.sidebar:
     st.write("# PDF Chatbot")
@@ -96,11 +101,14 @@ def anthropic_api_key_test(api_key):
     )
 
     print(f"{model_type} - {response.content[0].text}")
+
+    if not response:
+        return False
+
     if response.content[0].text == "True":
         return True
     else:
         return False
-
 
 def main():
     st.title("PDF Chatbot")
@@ -123,7 +131,8 @@ def main():
                     splitter = RecursiveCharacterTextSplitter(
                         chunk_size=1000,
                         chunk_overlap=200,
-                        length_function=len
+                        length_function=len,
+                        separators=["\n\n", "\n"]
                     )
 
                     chunks = splitter.split_text(text=text)
@@ -139,25 +148,33 @@ def main():
                             pickle.dump(vector_store, f)
 
                     question = st.chat_input("Ask a question:")
-
+                    
                     if question is not None:
                         st.chat_message(name="user").write(question)
-                        docs = vector_store.similarity_search(query=question, k=ret_chunks)
-
-                        # st.write(f"Top {k} most relevant chunks for the question '{question}':")
-                        # for i, doc in enumerate(docs):
-                        #     st.write(f"{i+1}. {doc}")
 
                         if model_type == "OpenAI":
                             chat = ChatOpenAI(openai_api_key=api_key, model=model, temperature=0.0)
                         elif model_type == "Anthropic":
                             chat = ChatAnthropic(anthropic_api_key=api_key, model=model, temperature=0.0)
 
+                        compressor = LLMChainExtractor.from_llm(chat)
+                        compression_retriever = ContextualCompressionRetriever(
+                            base_compressor = compressor, base_retriever = vector_store.as_retriever(search_type="mmr")
+                        )
+
+                        # docs = vector_store.similarity_search(query=question, k=ret_chunks)
+                        # docs = vector_store.max_marginal_relevance_search(query=question, k=ret_chunks, fetch_k=10)
+                        docs = compression_retriever.get_relevant_documents(query=question)
+
+                        # st.write(f"Top {ret_chunks} most relevant chunks for the question '{question}':")
+                        # for i, doc in enumerate(docs):
+                        #     st.write(f"{i+1}. {doc}")
+
                         chain = load_qa_chain(llm=chat, chain_type="stuff")
                         response = chain.run(input_documents=docs, question=question)
                         st.chat_message(name="ai").write(response)  
-                    else:
-                        st.write("Please ask a question.")
+                    # else:
+                    #     st.write("Please ask a question.")
 
             elif test_return == False:
                 st.write("Invalid API key. Please try again.")
