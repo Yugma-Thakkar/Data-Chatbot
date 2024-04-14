@@ -19,8 +19,8 @@ from langchain.chains.question_answering import load_qa_chain
 # langchain.debug = True
 # ret_chunks = 5
 
+# Extract text from a PDF file.
 def extract_text(pdf):
-    """Extract text from a PDF file."""
     reader = PdfReader(pdf)
     text = ""
     for page in reader.pages:
@@ -40,10 +40,8 @@ def split_text(text):
 embedding_model = 'sentence-transformers/sentence-t5-base' # okayish, not that good
 # embedding_model = 'sentence-transformers/msmarco-distilbert-base-dot-prod-v3' # better than the above
 
-# @st.cache_data
+# Create or load a vector store from the text chunks.
 def create_vector_store(_bar, chunks, _store_name):
-    """Create or load a vector store from the text chunks."""
-
     if os.path.exists(f"{_store_name}.pkl"):
         _bar.progress(0.5, text="Loading text chunks...")
         with open(f"{_store_name}.pkl", "rb") as f:
@@ -56,38 +54,42 @@ def create_vector_store(_bar, chunks, _store_name):
             pickle.dump(vector_store, f)
     return vector_store
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def openai_api_key_test(api_key):
-    """Test the OpenAI API key."""
-    client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "This is an authentication test."},
-            {"role": "user", "content": "Return True if you can see this message."},
-        ],
-        max_tokens=5,
-        temperature=0.0
-    )
-    return response.choices[0].message.content == "True"
+    # Test the OpenAI API key
+    try:
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "This is an authentication test."},
+                {"role": "user", "content": "Return True if you can see this message."},
+            ],
+            max_tokens=5,
+            temperature=0.0
+        )
+        if response.choices[0].message.content == "True": return True
+    except: return False
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def anthropic_api_key_test(api_key):
-    """Test the Anthropic API key."""
-    client = anthropic.Client(api_key=api_key)
-    response = client.messages.create(
-        model="claude-3-haiku-20240307",
-        system="This is an authentication test.",
-        messages=[
-            {"role": "user", "content": "Return True if you can see this message."}
-        ],
-        max_tokens=5,
-        temperature=0.0
-    )
-    return response.content[0].text == "True"
+    # Test the Anthropic API key.
+    try:
+        client = anthropic.Client(api_key=api_key)
+        response = client.messages.create(
+            model="claude-3-haiku-20240307",
+            system="This is an authentication test.",
+            messages=[
+                {"role": "user", "content": "Return True if you can see this message."}
+            ],
+            max_tokens=5,
+            temperature=0.0
+        )
+        if response.content[0].text == "True": return True
+    except: return False
 
+# Get user inputs from the Streamlit sidebar.
 def get_user_inputs():
-    """Get user inputs from the Streamlit sidebar."""
     with st.sidebar:
         st.write("# PDF Chatbot")
 
