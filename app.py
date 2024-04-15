@@ -7,6 +7,7 @@ import streamlit as st
 import pickle
 from streamlit_extras.add_vertical_space import add_vertical_space
 from PyPDF2 import PdfReader
+from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings.huggingface import HuggingFaceEmbeddings
@@ -15,9 +16,12 @@ from langchain.retrievers.document_compressors import LLMChainExtractor
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain.chains.question_answering import load_qa_chain
+from langchain.chains.question_answering import _load_stuff_chain
 
 # langchain.debug = True
-# ret_chunks = 5
+
+# number of chunks to return from the PDF
+ret_chunks = 3
 
 # Extract text from a PDF file.
 def extract_text(pdf):
@@ -41,16 +45,17 @@ embedding_model = 'sentence-transformers/sentence-t5-base' # okayish, not that g
 # embedding_model = 'sentence-transformers/msmarco-distilbert-base-dot-prod-v3' # better than the above
 
 # Create or load a vector store from the text chunks.
-def create_vector_store(_bar, chunks, _store_name):
-    if os.path.exists(f"{_store_name}.pkl"):
-        _bar.progress(0.5, text="Loading text chunks...")
-        with open(f"{_store_name}.pkl", "rb") as f:
+def create_vector_store(bar, chunks, store_name):
+    if os.path.exists(f"{store_name}.pkl"):
+        if bar is not None:
+            bar.progress(0.5, text="Loading text chunks...")
+        with open(f"{store_name}.pkl", "rb") as f:
             vector_store = pickle.load(f)
     else:
         embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
-        _bar.progress(0.35, text="Embedding text chunks...")
+        bar.progress(0.35, text="Embedding text chunks...")
         vector_store = FAISS.from_texts(chunks, embedding=embeddings)
-        with open(f"{_store_name}.pkl", "wb") as f:
+        with open(f"{store_name}.pkl", "wb") as f:
             pickle.dump(vector_store, f)
     return vector_store
 
@@ -129,9 +134,82 @@ def get_user_inputs():
         ''')
         st.divider()
         add_vertical_space(3)
-        st.write("This app was created using [Streamlit](https://streamlit.io/), [Langchain](https://langchain.com/), and [OpenAI](https://openai.com/).")
+        st.write("This app was created using [Streamlit](https://streamlit.io/), [Langchain](https://langchain.com/), [Claude](https://www.anthropic.com/) and [OpenAI](https://openai.com/).")
 
     return model_type, model, api_key, temperature
+
+# @st.cache_data(show_spinner=False)
+def process_pdf_file(pdf, model_type, model, api_key, temperature):
+    # Check if there's a PDF and if it's new or the same as the last one loaded
+    if pdf is not None:
+        if pdf != st.session_state.get('last_processed_pdf', None):
+            st.session_state['last_processed_pdf'] = pdf  # update the session state
+            
+            bar = st.progress(0, text="Extracting text from the PDF...")
+            text = extract_text(pdf)
+
+            bar.progress(0.25, text="Splitting text into chunks...")
+            chunks = split_text(text)
+            
+            store_name = pdf.name[:-4]
+            vector_store = create_vector_store(bar=bar, chunks=chunks, store_name=store_name)
+            st.session_state['vector_store'] = vector_store
+            
+            bar.progress(1.0, text="Text chunks loaded.")
+            time.sleep(0.5)
+            question = st.chat_input("Ask a question:")
+            time.sleep(0.5)
+            bar.empty()
+
+        else:
+            text = extract_text(pdf)
+            chunks = split_text(text)
+            store_name = pdf.name[:-4]
+            vector_store = create_vector_store(bar=None, chunks=chunks, store_name=store_name)
+            st.session_state['vector_store'] = vector_store
+            question = st.chat_input("Ask a question:")
+
+        if question is not None:
+            st.chat_message(name="user").write(question)
+            respond_to_question(question, model_type, api_key, model, temperature)
+
+# @st.cache_data(show_spinner=False)
+def respond_to_question(question, model_type, api_key, model, temperature):
+    vector_store = st.session_state.get('vector_store')
+    if vector_store is not None:
+        if model_type == "OpenAI":
+            chat = ChatOpenAI(openai_api_key=api_key, model=model, temperature=temperature)
+        elif model_type == "Anthropic":
+            chat = ChatAnthropic(anthropic_api_key=api_key, model=model, temperature=temperature)
+
+        compressor = LLMChainExtractor.from_llm(chat)
+        compression_retriever = ContextualCompressionRetriever(
+            base_compressor=compressor, base_retriever=vector_store.as_retriever(search_type="similarity", search_kwargs={"k": ret_chunks})
+        )
+
+        template = """As a friendly chatbot assistant, your goal is to provide the user accurate answers for their question using the given context. If unsure, it's okay to admit not knowing. Avoid inventing answers. Aim to preserve the context's language when responding. Feel free to add relevant information, indicating it's not in the original context. Use friendly (but professional) and non-technical language unless required due to the user's question or the nature of the context.
+        
+        {context}
+        
+        Question: {question}
+        
+        Helpful Answer:"""
+        qa_chain_prompt = PromptTemplate.from_template(template)
+
+        with st.spinner("Thinking..."):
+            # OTHER RETRIEVERS
+            # docs = vector_store.similarity_search(query=question, k=ret_chunks)
+            # docs = vector_store.max_marginal_relevance_search(query=question, k=ret_chunks, fetch_k=10)
+            docs = compression_retriever.get_relevant_documents(query=question)
+            st.write(f"Most relevant chunks for the question '{question}':")
+            for i, doc in enumerate(docs):
+                st.write(f"{i+1}. {doc}")
+
+            # chain = load_qa_chain(llm=chat, chain_type="stuff")
+            chain = _load_stuff_chain(llm=chat, prompt=qa_chain_prompt)
+            response = chain.run(input_documents=docs, question=question, verbose=True)
+        st.chat_message(name="ai").write(response)
+
 
 def main():
     st.title("PDF Chatbot")
@@ -140,52 +218,16 @@ def main():
 
     if api_key:
         if model_type == "OpenAI":
-            test_return = openai_api_key_test(api_key)
+            with st.spinner("Testing the OpenAI API key..."):
+                test_return = openai_api_key_test(api_key)
         elif model_type == "Anthropic":
-            test_return = anthropic_api_key_test(api_key)
+            with st.spinner("Testing the Anthropic API key..."):
+                test_return = anthropic_api_key_test(api_key)
 
         if test_return == True:
             pdf = st.file_uploader("Please upload a PDF file to get started", type="pdf")
             if pdf is not None:
-                bar = st.progress(0, text="Extracting text from the PDF...")
-                text = extract_text(pdf)
-
-                bar.progress(0.25, text="Splitting text into chunks...")
-                chunks = split_text(text)
-                
-                store_name = pdf.name[:-4]
-                vector_store = create_vector_store(bar, chunks, store_name)
-                
-                bar.progress(1.0, text="Text chunks loaded.")
-                time.sleep(1)
-                question = st.chat_input("Ask a question:")
-                time.sleep(0.5)
-                bar.empty()
-                if question is not None:
-                    st.chat_message(name="user").write(question)
-
-                    if model_type == "OpenAI":
-                        chat = ChatOpenAI(openai_api_key=api_key, model=model, temperature=temperature)
-                    elif model_type == "Anthropic":
-                        chat = ChatAnthropic(anthropic_api_key=api_key, model=model, temperature=temperature)
-
-                    # docs = vector_store.similarity_search(query=question, k=ret_chunks)
-                    # docs = vector_store.max_marginal_relevance_search(query=question, k=ret_chunks, fetch_k=10)
-
-                    compressor = LLMChainExtractor.from_llm(chat)
-                    compression_retriever = ContextualCompressionRetriever(
-                        base_compressor=compressor, base_retriever=vector_store.as_retriever(search_type="mmr")
-                    )
-
-                    with st.spinner("Thinking..."):
-                        docs = compression_retriever.get_relevant_documents(query=question)
-                        # st.write(f"Most relevant chunks for the question '{question}':")
-                        # for i, doc in enumerate(docs):
-                        #     st.write(f"{i+1}. {doc}")
-
-                        chain = load_qa_chain(llm=chat, chain_type="stuff")
-                        response = chain.run(input_documents=docs, question=question)
-                    st.chat_message(name="ai").write(response)
+                process_pdf_file(pdf, model_type, model, api_key, temperature)
         else:
             st.error("Invalid API key. Please try again.")
 
